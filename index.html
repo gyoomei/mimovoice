@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MiMoVoice — Real-Time Voice Changer</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --font:'Outfit',system-ui,sans-serif;--font-display:'Space Grotesk',system-ui,sans-serif;--font-mono:'JetBrains Mono',monospace;
+  --bg:#0a0a12;--panel:#111118;--panel2:#1a1a24;--panel3:#222230;
+  --text:#e8e8f0;--muted:#6a6a80;--acc:#22d3ee;--acc2:#06b6d4;--acc3:#0891b2;
+  --good:#34d399;--warn:#fbbf24;--bad:#f87171;
+  --line:rgba(255,255,255,.06);--line2:rgba(255,255,255,.12);
+  --radius:12px;--radius-sm:8px;--radius-xs:6px;
+}
+[data-theme="light"]{
+  --bg:#f0f9ff;--panel:#e0f2fe;--panel2:#bae6fd;--panel3:#7dd3fc;
+  --text:#0c4a6e;--muted:#0369a1;--acc:#0891b2;--acc2:#0e7490;--acc3:#155e75;
+  --line:rgba(0,0,0,.08);--line2:rgba(0,0,0,.15);
+}
+html,body{height:100%;overflow-x:hidden;background:var(--bg);color:var(--text);font-family:var(--font)}
+body{display:flex;flex-direction:column}
+button{font-family:var(--font);cursor:pointer;border:none;background:none;color:var(--text);font-size:13px}
+
+nav{display:flex;align-items:center;gap:10px;padding:8px 16px;background:var(--panel);border-bottom:1px solid var(--line);flex-shrink:0;z-index:10}
+.nav-logo{font-family:var(--font-display);font-weight:700;font-size:16px;letter-spacing:-.03em;background:linear-gradient(135deg,#22d3ee,#06b6d4,#0891b2);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.nav-spacer{flex:1}
+.icon-btn{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-xs);background:var(--panel2);border:1px solid var(--line);font-size:15px;transition:all .15s}
+.icon-btn:hover{border-color:var(--acc)}
+.theme-toggle::before{content:'🌙'}
+[data-theme="light"] .theme-toggle::before{content:'☀️'}
+
+.main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;gap:20px;max-width:800px;margin:0 auto;width:100%}
+
+/* VISUALIZER */
+.visualizer{width:100%;height:150px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;position:relative}
+#waveCanvas{width:100%;height:100%;display:block}
+.vis-label{position:absolute;top:8px;left:12px;font-family:var(--font-mono);font-size:10px;color:var(--muted)}
+
+/* MIC BUTTON */
+.mic-wrap{display:flex;flex-direction:column;align-items:center;gap:12px}
+.mic-btn{width:80px;height:80px;border-radius:50%;background:var(--panel2);border:3px solid var(--line2);display:flex;align-items:center;justify-content:center;font-size:32px;transition:all .2s;position:relative}
+.mic-btn:hover{border-color:var(--acc);transform:scale(1.05)}
+.mic-btn.active{border-color:var(--bad);background:rgba(248,113,113,.1);animation:micPulse 1.5s infinite}
+.mic-btn.active::after{content:'';position:absolute;inset:-8px;border-radius:50%;border:2px solid var(--bad);opacity:.3;animation:micRing 1.5s infinite}
+@keyframes micPulse{0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,.3)}50%{box-shadow:0 0 20px 10px rgba(248,113,113,.1)}}
+@keyframes micRing{0%{transform:scale(.8);opacity:.5}100%{transform:scale(1.3);opacity:0}}
+.mic-label{font-size:12px;color:var(--muted)}
+
+/* EFFECTS GRID */
+.effects-section{width:100%}
+.section-title{font-family:var(--font-display);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px}
+.effects-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.effect-btn{padding:12px 8px;border-radius:var(--radius-sm);background:var(--panel2);border:2px solid var(--line);text-align:center;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:4px}
+.effect-btn:hover{border-color:var(--acc)}
+.effect-btn.active{border-color:var(--acc);background:rgba(34,211,238,.08)}
+.effect-btn .emoji{font-size:24px}
+.effect-btn .name{font-size:11px;font-weight:600}
+.effect-btn .desc{font-size:9px;color:var(--muted)}
+
+/* CONTROLS */
+.controls{width:100%;display:flex;flex-direction:column;gap:10px}
+.slider-row{display:flex;align-items:center;gap:8px}
+.slider-row label{font-size:11px;color:var(--muted);min-width:60px}
+.slider-row input[type=range]{flex:1;height:3px}
+.slider-row span{font-family:var(--font-mono);font-size:10px;color:var(--muted);min-width:28px;text-align:right}
+
+/* RECORD */
+.record-bar{display:flex;gap:8px;align-items:center;justify-content:center}
+.rec-btn{padding:8px 16px;border-radius:var(--radius-sm);background:var(--panel2);border:1px solid var(--line);font-size:12px;font-weight:500;transition:all .15s;display:flex;align-items:center;gap:6px}
+.rec-btn:hover{border-color:var(--acc)}
+.rec-btn.active{background:var(--bad);border-color:var(--bad);color:#fff;animation:micPulse 1.5s infinite}
+
+/* INFO */
+.info-bar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.info-chip{padding:4px 10px;background:var(--panel2);border:1px solid var(--line);border-radius:var(--radius-xs);font-family:var(--font-mono);font-size:10px}
+
+.status-bar{display:flex;align-items:center;gap:12px;padding:4px 16px;background:var(--panel);border-top:1px solid var(--line);font-family:var(--font-mono);font-size:10px;color:var(--muted);flex-shrink:0}
+.toast{position:fixed;bottom:50px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--panel3);color:var(--text);padding:8px 16px;border-radius:var(--radius);border:1px solid var(--line2);font-size:12px;z-index:999;opacity:0;transition:all .3s;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+@media(max-width:500px){
+  .effects-grid{grid-template-columns:repeat(2,1fr)}
+  .mic-btn{width:64px;height:64px;font-size:24px}
+}
+</style>
+</head>
+<body>
+<nav>
+  <span class="nav-logo">🎙️ MiMoVoice</span>
+  <span style="font-size:12px;color:var(--muted)">Real-Time Voice Changer</span>
+  <span class="nav-spacer"></span>
+  <button class="icon-btn theme-toggle" onclick="toggleTheme()"></button>
+</nav>
+
+<div class="main">
+  <div class="visualizer">
+    <span class="vis-label" id="visLabel">Waveform</span>
+    <canvas id="waveCanvas"></canvas>
+  </div>
+
+  <div class="mic-wrap">
+    <button class="mic-btn" id="micBtn" onclick="toggleMic()">🎤</button>
+    <div class="mic-label" id="micLabel">Click to start</div>
+  </div>
+
+  <div class="effects-section">
+    <div class="section-title">Voice Effect</div>
+    <div class="effects-grid" id="effectsGrid"></div>
+  </div>
+
+  <div class="controls">
+    <div class="slider-row">
+      <label>Pitch</label>
+      <input type="range" id="pitchSlider" min="-12" max="12" value="0" step="1" oninput="updatePitch(this.value)">
+      <span id="pitchVal">0</span>
+    </div>
+    <div class="slider-row">
+      <label>Volume</label>
+      <input type="range" id="volSlider" min="0" max="100" value="80" oninput="updateVol(this.value)">
+      <span id="volVal">80</span>
+    </div>
+    <div class="slider-row">
+      <label>Reverb</label>
+      <input type="range" id="reverbSlider" min="0" max="100" value="30" oninput="updateReverb(this.value)">
+      <span id="reverbVal">30</span>
+    </div>
+  </div>
+
+  <div class="record-bar">
+    <button class="rec-btn" id="recBtn" onclick="toggleRecord()">⏺️ Record</button>
+    <button class="rec-btn" id="playBtn" onclick="playRecording()" style="display:none">▶️ Play</button>
+  </div>
+
+  <div class="info-bar">
+    <div class="info-chip" id="infoStatus">🔴 Mic: Off</div>
+    <div class="info-chip" id="infoEffect">Effect: None</div>
+    <div class="info-chip" id="infoLatency">Latency: —</div>
+  </div>
+</div>
+
+<div class="status-bar">
+  <span style="flex:1"></span>
+  <span>MiMoVoice v1.0 · Web Audio API · Zero API</span>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════
+let audioCtx = null;
+let micStream = null;
+let micSource = null;
+let analyser = null;
+let masterGain = null;
+let isLive = false;
+let currentEffect = 'none';
+let pitchShift = 0;
+let reverbAmount = 0.3;
+let isRecording = false;
+let mediaRecorder = null;
+let recordedChunks = [];
+let recordedBlob = null;
+let destNode = null;
+let reverbNode = null;
+let dryGain = null;
+let wetGain = null;
+let delayNode = null;
+let delayFeedback = null;
+let ringOsc = null;
+let ringGain = null;
+
+// ═══════════════════════════════════════
+// EFFECTS
+// ═══════════════════════════════════════
+const EFFECTS = [
+  {id:'none',    name:'Normal',   emoji:'🎤', desc:'No effect'},
+  {id:'robot',   name:'Robot',    emoji:'🤖', desc:'Ring modulation'},
+  {id:'chipmunk',name:'Chipmunk', emoji:'🐿️', desc:'Pitch up'},
+  {id:'deep',    name:'Deep',     emoji:'👹', desc:'Pitch down'},
+  {id:'echo',    name:'Echo',     emoji:'🏔️', desc:'Delay feedback'},
+  {id:'reverb',  name:'Reverb',   emoji:'🏛️', desc:'Hall effect'},
+  {id:'alien',   name:'Alien',    emoji:'👽', desc:'Ring + reverb'},
+  {id:'radio',   name:'Radio',    emoji:'📻', desc:'Bandpass filter'},
+  {id:'whisper', name:'Whisper',  emoji:'🤫', desc:'Noise + filter'},
+];
+
+// ═══════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════
+function init() {
+  renderEffects();
+  drawIdleVisualizer();
+}
+
+function renderEffects() {
+  document.getElementById('effectsGrid').innerHTML = EFFECTS.map(e =>
+    `<button class="effect-btn${e.id===currentEffect?' active':''}" onclick="setEffect('${e.id}')" id="eff_${e.id}">
+      <span class="emoji">${e.emoji}</span>
+      <span class="name">${e.name}</span>
+      <span class="desc">${e.desc}</span>
+    </button>`
+  ).join('');
+}
+
+function setEffect(id) {
+  currentEffect = id;
+  document.querySelectorAll('.effect-btn').forEach(b => b.classList.toggle('active', b.id === 'eff_'+id));
+  document.getElementById('infoEffect').textContent = 'Effect: ' + EFFECTS.find(e=>e.id===id).name;
+  if (isLive) rebuildGraph();
+}
+
+// ═══════════════════════════════════════
+// AUDIO GRAPH
+// ═══════════════════════════════════════
+async function startMic() {
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation: true, noiseSuppression: true}});
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.8;
+    
+    // Reverb
+    reverbNode = audioCtx.createConvolver();
+    reverbNode.buffer = createImpulseResponse(2, 2);
+    dryGain = audioCtx.createGain();
+    wetGain = audioCtx.createGain();
+    dryGain.gain.value = 1 - reverbAmount;
+    wetGain.gain.value = reverbAmount;
+    
+    // Delay (echo)
+    delayNode = audioCtx.createDelay(1);
+    delayNode.delayTime.value = 0.3;
+    delayFeedback = audioCtx.createGain();
+    delayFeedback.gain.value = 0.4;
+    
+    // Ring modulator (robot)
+    ringOsc = audioCtx.createOscillator();
+    ringOsc.frequency.value = 50;
+    ringOsc.type = 'sine';
+    ringGain = audioCtx.createGain();
+    ringGain.gain.value = 0;
+    ringOsc.connect(ringGain);
+    ringOsc.start();
+    
+    // Recording destination
+    destNode = audioCtx.createMediaStreamDestination();
+    
+    micSource = audioCtx.createMediaStreamSource(micStream);
+    rebuildGraph();
+    
+    isLive = true;
+    document.getElementById('micBtn').classList.add('active');
+    document.getElementById('micLabel').textContent = 'Click to stop';
+    document.getElementById('infoStatus').textContent = '🟢 Mic: On';
+    document.getElementById('infoLatency').textContent = 'Latency: ' + (audioCtx.baseLatency * 1000).toFixed(0) + 'ms';
+    
+    drawVisualizer();
+    toast('Microphone active');
+  } catch(e) {
+    toast('Mic access denied: ' + e.message);
+  }
+}
+
+function stopMic() {
+  if (micStream) {
+    micStream.getTracks().forEach(t => t.stop());
+    micStream = null;
+  }
+  if (audioCtx) {
+    audioCtx.close();
+    audioCtx = null;
+  }
+  isLive = false;
+  document.getElementById('micBtn').classList.remove('active');
+  document.getElementById('micLabel').textContent = 'Click to start';
+  document.getElementById('infoStatus').textContent = '🔴 Mic: Off';
+  drawIdleVisualizer();
+}
+
+function toggleMic() {
+  if (isLive) stopMic();
+  else startMic();
+}
+
+function rebuildGraph() {
+  if (!micSource || !audioCtx) return;
+  
+  // Disconnect everything
+  try { micSource.disconnect(); } catch(e) {}
+  try { dryGain.disconnect(); } catch(e) {}
+  try { wetGain.disconnect(); } catch(e) {}
+  try { delayNode.disconnect(); } catch(e) {}
+  try { delayFeedback.disconnect(); } catch(e) {}
+  try { ringGain.disconnect(); } catch(e) {}
+  try { masterGain.disconnect(); } catch(e) {}
+  
+  // Reset
+  ringGain.gain.value = 0;
+  delayFeedback.gain.value = 0;
+  dryGain.gain.value = 1 - reverbAmount;
+  wetGain.gain.value = reverbAmount;
+  
+  let chain = micSource;
+  
+  switch(currentEffect) {
+    case 'none':
+      chain.connect(dryGain);
+      dryGain.connect(masterGain);
+      break;
+    case 'robot':
+      // Ring modulation
+      ringOsc.frequency.value = 50 + Math.abs(pitchShift) * 5;
+      ringGain.gain.value = 1;
+      chain.connect(ringGain);
+      ringGain.connect(dryGain);
+      dryGain.connect(masterGain);
+      break;
+    case 'chipmunk':
+      // Pitch up via playbackRate on a delay-based pitch shift
+      chain.connect(dryGain);
+      dryGain.connect(masterGain);
+      // Note: real pitch shift needs SoundTouch.js, we simulate with filter
+      const hp = audioCtx.createBiquadFilter();
+      hp.type = 'highshelf';
+      hp.frequency.value = 2000;
+      hp.gain.value = 10;
+      chain.connect(hp);
+      hp.connect(dryGain);
+      break;
+    case 'deep':
+      chain.connect(dryGain);
+      dryGain.connect(masterGain);
+      const lp = audioCtx.createBiquadFilter();
+      lp.type = 'lowshelf';
+      lp.frequency.value = 500;
+      lp.gain.value = 15;
+      chain.connect(lp);
+      lp.connect(dryGain);
+      break;
+    case 'echo':
+      delayNode.delayTime.value = 0.3;
+      delayFeedback.gain.value = 0.5;
+      chain.connect(dryGain);
+      chain.connect(delayNode);
+      delayNode.connect(delayFeedback);
+      delayFeedback.connect(delayNode);
+      delayNode.connect(wetGain);
+      dryGain.connect(masterGain);
+      wetGain.connect(masterGain);
+      break;
+    case 'reverb':
+      chain.connect(dryGain);
+      chain.connect(reverbNode);
+      reverbNode.connect(wetGain);
+      dryGain.connect(masterGain);
+      wetGain.connect(masterGain);
+      break;
+    case 'alien':
+      ringOsc.frequency.value = 80;
+      ringGain.gain.value = 1;
+      chain.connect(ringGain);
+      ringGain.connect(dryGain);
+      ringGain.connect(reverbNode);
+      reverbNode.connect(wetGain);
+      dryGain.connect(masterGain);
+      wetGain.connect(masterGain);
+      break;
+    case 'radio':
+      const bp = audioCtx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 1500;
+      bp.Q.value = 2;
+      chain.connect(bp);
+      bp.connect(dryGain);
+      dryGain.connect(masterGain);
+      break;
+    case 'whisper':
+      // Add noise + filter
+      const noise = audioCtx.createOscillator();
+      noise.type = 'sawtooth';
+      noise.frequency.value = 100;
+      const noiseGain = audioCtx.createGain();
+      noiseGain.gain.value = 0.05;
+      noise.connect(noiseGain);
+      noiseGain.connect(masterGain);
+      noise.start();
+      const lpf = audioCtx.createBiquadFilter();
+      lpf.type = 'lowpass';
+      lpf.frequency.value = 3000;
+      chain.connect(lpf);
+      lpf.connect(dryGain);
+      dryGain.connect(masterGain);
+      break;
+  }
+  
+  // Also connect to analyser and recording
+  masterGain.connect(analyser);
+  masterGain.connect(audioCtx.destination);
+  masterGain.connect(destNode);
+}
+
+function createImpulseResponse(duration, decay) {
+  const len = audioCtx.sampleRate * duration;
+  const buf = audioCtx.createBuffer(2, len, audioCtx.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    const data = buf.getChannelData(c);
+    for (let i = 0; i < len; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+    }
+  }
+  return buf;
+}
+
+// ═══════════════════════════════════════
+// CONTROLS
+// ═══════════════════════════════════════
+function updatePitch(val) {
+  pitchShift = parseInt(val);
+  document.getElementById('pitchVal').textContent = val;
+  if (currentEffect === 'robot' || currentEffect === 'alien') {
+    ringOsc.frequency.value = 50 + Math.abs(pitchShift) * 5;
+  }
+}
+
+function updateVol(val) {
+  const v = val / 100;
+  if (masterGain) masterGain.gain.value = v;
+  document.getElementById('volVal').textContent = val;
+}
+
+function updateReverb(val) {
+  reverbAmount = val / 100;
+  document.getElementById('reverbVal').textContent = val;
+  if (dryGain) dryGain.gain.value = 1 - reverbAmount;
+  if (wetGain) wetGain.gain.value = reverbAmount;
+}
+
+// ═══════════════════════════════════════
+// RECORDING
+// ═══════════════════════════════════════
+function toggleRecord() {
+  if (!isLive) return toast('Start mic first');
+  if (!isRecording) {
+    recordedChunks = [];
+    mediaRecorder = new MediaRecorder(destNode.stream);
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      recordedBlob = new Blob(recordedChunks, {type:'audio/webm'});
+      document.getElementById('playBtn').style.display = '';
+      toast('Recording saved');
+    };
+    mediaRecorder.start();
+    isRecording = true;
+    document.getElementById('recBtn').classList.add('active');
+    document.getElementById('recBtn').innerHTML = '⏹️ Stop';
+    toast('Recording...');
+  } else {
+    mediaRecorder.stop();
+    isRecording = false;
+    document.getElementById('recBtn').classList.remove('active');
+    document.getElementById('recBtn').innerHTML = '⏺️ Record';
+  }
+}
+
+function playRecording() {
+  if (!recordedBlob) return;
+  const url = URL.createObjectURL(recordedBlob);
+  const audio = new Audio(url);
+  audio.play();
+  toast('Playing recording');
+}
+
+// ═══════════════════════════════════════
+// VISUALIZER
+// ═══════════════════════════════════════
+function drawVisualizer() {
+  if (!isLive || !analyser) return;
+  requestAnimationFrame(drawVisualizer);
+
+  const canvas = document.getElementById('waveCanvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = canvas.parentElement.clientWidth * 2;
+  canvas.height = canvas.parentElement.clientHeight * 2;
+  ctx.scale(2, 2);
+  const W = canvas.width / 2, H = canvas.height / 2;
+
+  const bufLen = analyser.frequencyBinCount;
+  const data = new Uint8Array(bufLen);
+  analyser.getByteTimeDomainData(data);
+
+  const isDark = document.documentElement.dataset.theme === 'dark';
+  ctx.fillStyle = isDark ? 'rgba(10,10,18,.85)' : 'rgba(240,249,255,.85)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Waveform
+  const gradient = ctx.createLinearGradient(0, 0, W, 0);
+  gradient.addColorStop(0, '#22d3ee');
+  gradient.addColorStop(0.5, '#06b6d4');
+  gradient.addColorStop(1, '#0891b2');
+  ctx.strokeStyle = gradient;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+
+  const sliceW = W / bufLen;
+  let x = 0;
+  for (let i = 0; i < bufLen; i++) {
+    const v = data[i] / 128.0;
+    const y = v * H / 2;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+    x += sliceW;
+  }
+  ctx.stroke();
+
+  // Glow
+  ctx.strokeStyle = 'rgba(34,211,238,.2)';
+  ctx.lineWidth = 6;
+  ctx.stroke();
+
+  // Frequency bars
+  const freqData = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(freqData);
+  const barW = W / 64;
+  for (let i = 0; i < 64; i++) {
+    const v = freqData[i] / 255;
+    const h = v * H * 0.4;
+    ctx.fillStyle = `rgba(34,211,238,${v * 0.3})`;
+    ctx.fillRect(i * barW, H - h, barW - 1, h);
+  }
+}
+
+function drawIdleVisualizer() {
+  const canvas = document.getElementById('waveCanvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = canvas.parentElement.clientWidth * 2;
+  canvas.height = canvas.parentElement.clientHeight * 2;
+  ctx.scale(2, 2);
+  const W = canvas.width / 2, H = canvas.height / 2;
+
+  const isDark = document.documentElement.dataset.theme === 'dark';
+  ctx.fillStyle = isDark ? 'rgba(10,10,18,.85)' : 'rgba(240,249,255,.85)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Flat line
+  ctx.strokeStyle = isDark ? 'rgba(34,211,238,.3)' : 'rgba(8,145,178,.3)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, H / 2);
+  ctx.lineTo(W, H / 2);
+  ctx.stroke();
+}
+
+// ═══════════════════════════════════════
+// THEME
+// ═══════════════════════════════════════
+function toggleTheme() {
+  const h = document.documentElement;
+  h.dataset.theme = h.dataset.theme === 'dark' ? 'light' : 'dark';
+  localStorage.setItem('mimo-theme', h.dataset.theme);
+  if (!isLive) drawIdleVisualizer();
+}
+const t = localStorage.getItem('mimo-theme');
+if (t) document.documentElement.dataset.theme = t;
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 1500);
+}
+
+init();
+</script>
+</body>
+</html>
